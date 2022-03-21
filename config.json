@@ -3,7 +3,7 @@
         "mode": "OBSERVER"
     },
     "BoxDumper": {
-        "mode": "satroki",
+        "mode": "file",
         "satroki_username": "你的网站用户名",
         "satroki_password": "你的网站密码"
     }
