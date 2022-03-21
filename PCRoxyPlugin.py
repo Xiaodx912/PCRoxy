@@ -1,7 +1,7 @@
 from functools import wraps
 import os
 import sys
-from typing import Callable, List
+from typing import Callable, Dict, List
 from PCRoxy import _PCRoxy_core, FuncNode, PCRoxy, PCRoxyLog, PCRoxyMode
 
 
@@ -10,14 +10,16 @@ def get_core() -> PCRoxy:
         raise ValueError('No PCRoxy instance.')
     return _PCRoxy_core
 
+
 @PCRoxyLog
 class PCRoxyPlugin:
-    def __init__(self, name: str = None, mode_list: List[PCRoxyMode] = []) -> None:
+    def __init__(self, name: str = None, mode_list: List[PCRoxyMode] = []):
         back_filename = os.path.basename(
             sys._getframe().f_back.f_code.co_filename)
-        self.logger(f'Loading plugin "{back_filename}"...','info')
+        self.logger(f'Loading plugin "{back_filename}"...', 'info')
         self.name = name if name is not None else back_filename.replace(
             '.py', '')
+        self.config = self.core.config.get(self.name, {})
         self.mode = mode_list
 
     @property

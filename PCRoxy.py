@@ -124,9 +124,19 @@ _PCRoxy_core = None
 @PCRoxyLog()
 class PCRoxy:
 
-    def __init__(self, dumpmaster: Union[DumpMaster, WebMaster], mode: PCRoxyMode = PCRoxyMode.OBSERVER):
+    def __init__(self, dumpmaster: Union[DumpMaster, WebMaster]):
         global _PCRoxy_core
-        self.mode = mode
+        try:
+            self.config: Dict = json.load(open('./config.json', 'r', encoding='utf-8'))
+        except:
+            self.logger('Config not found!', 'warn')
+            self.config = {}
+        try:
+            self.mode = PCRoxyMode.__getitem__(self.config['PCRoxy']['mode'])
+        except KeyError:
+            self.logger(
+                'config.PCRoxy.mode error, fall back to OBSERVER mode', 'warn')
+            self.mode = PCRoxyMode.OBSERVER
         self.mitmdump = dumpmaster
         self.logger(f'Starting in {self.mode.name} mode')
         if not self.mode.isSafe():
