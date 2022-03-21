@@ -23,7 +23,7 @@ class ViewBCRMsgPack(contentviews.msgpack.ViewMsgPack):
     ) -> contentviews.TViewResult:
         decryptor = BCRCryptor()
         decrypted = decryptor.decrypt(data)
-        return "BCR msgpack", contentviews.msgpack.format_msgpack(decrypted)
+        return f"BCR msgpack(key={decryptor.get_key(data)})", contentviews.msgpack.format_msgpack(decrypted)
 
     def render_priority(
         self,

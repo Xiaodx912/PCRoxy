@@ -54,12 +54,19 @@ class BCRCryptor:
         data = self.msgpack_unpack(packed)
         return data
 
-    def encrypt(self, data: object, key: bytes):
+    def encrypt(self, data: object, key: bytes)->bytes:
         packed = self.msgpack_pack(data)
         padded = self.text_pad(packed)
         encrypted = self.aes_encrypt(padded, key)
         raw = self.squeeze(encrypted, key)
         return raw
+
+    def get_key(self, raw: bytes)->bytes:
+        try:
+            raw = base64.b64decode(raw, validate=True)
+        except binascii.Error:
+            raw = raw
+        return self.split(raw)[-1]
 
     @staticmethod
     def gen_aes_key() -> bytes:
