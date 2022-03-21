@@ -69,7 +69,9 @@ class BCRCryptor:
         return self.split(raw)[-1]
 
     @staticmethod
-    def gen_aes_key() -> bytes:
+    def gen_aes_key(mode:str='client') -> bytes:
         rand_hex = bytes([random.choice(b'0123456789abcdef')
                          for _ in range(32)])
+        if mode=='server':
+            return rand_hex
         return base64.b64encode(rand_hex)[:32]
