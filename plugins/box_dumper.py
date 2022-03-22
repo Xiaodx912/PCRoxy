@@ -1,7 +1,7 @@
 import base64
 import gzip
 import json
-import requests
+import aiohttp
 from PCRoxy import PCRoxyMode, HookCtx
 from PCRoxyPlugin import PCRoxyPlugin
 
@@ -14,19 +14,20 @@ satroki_username = plugin.config['satroki_username']
 satroki_password = plugin.config['satroki_password']
 
 
-def gen_satroki_headers(username, password):
+async def gen_satroki_headers(username, password):
     if username is None or password is None:
         raise TypeError('Please set your satroki account info first.')
     headers = {'Content-Type': 'application/json'}
     data = json.dumps({'userName': username, 'password': password})
-    ret = requests.post(
-        url='https://pci.satroki.tech/api/Login', headers=headers, data=data)
-    if not ret or not json.loads(ret.text)['successful']:
-        raise RuntimeError('Satroki login err: ' + ret.text)
-        token = ''
-    else:
-        token = 'Bearer ' + json.loads(ret.text)['token']
-    return {'Content-Type': 'application/json', 'authorization': token}
+    async with aiohttp.ClientSession() as session:
+        async with session.post('https://pci.satroki.tech/api/Login',headers=headers, data=data) as res:
+            if not res or not json.loads(await res.text())['successful']:
+                raise RuntimeError('Satroki login err: ' + res.text)
+                token = ''
+            else:
+                token = 'Bearer ' + json.loads(await res.text())['token']
+            return {'Content-Type': 'application/json', 'authorization': token}
+    
 
 
 def unit_trans(unit):
@@ -92,7 +93,8 @@ def enc_library_dict(data):
 
 
 @plugin.on_response(path='/load/index')
-def DumpPlayerBox(context: HookCtx):
+async def DumpPlayerBox(context: HookCtx):
+    print('========================Called===========================')
     box_data = {}
     box_data['unit_list'] = context.payload['data']['unit_list']
     box_data['user_chara_info'] = context.payload['data']['user_chara_info']
@@ -107,15 +109,16 @@ def DumpPlayerBox(context: HookCtx):
         print('='*40)
     elif mode == 'satroki':
         print('Try logging into satroki...')
-        s_header = gen_satroki_headers(satroki_username, satroki_password)
+        s_header = await gen_satroki_headers(satroki_username, satroki_password)
         print('Login OK.')
-        ret = requests.post(
-            url='https://pci.satroki.tech/api/Box/ImportBoxFromJson?s=cn',
-            headers=s_header,
-            data=json.dumps(box_data, separators=(',', ':'))
-        )
-        if not ret:
-            raise RuntimeWarning(ret.text)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                'https://pci.satroki.tech/api/Box/ImportBoxFromJson?s=cn',
+                headers=s_header, 
+                data=json.dumps(box_data, separators=(',', ':'))
+            ) as res:
+                if not res:
+                    raise RuntimeWarning(await res.text())
     elif mode == 'file':
         box_data['user_info'] = context.payload['data']['user_info']
         json.dump(box_data, open(
