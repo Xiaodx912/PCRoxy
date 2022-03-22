@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import json
 import os
@@ -96,7 +97,7 @@ class HookChain:
         self.cryptor = BCRCryptor()
         self.ready = True
 
-    def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
+    async def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
         if not flow.request.host.endswith('gs-gzlj.bilibiligame.net'):
             return
         flow.marked = ':crown:'
@@ -115,7 +116,9 @@ class HookChain:
                 context.payload = json.loads(raw)
             else:
                 context.payload = self.cryptor.decrypt(raw)
-            node.func(context=context)
+            ret=node.func(context=context)
+            if asyncio.coroutines.iscoroutine(ret): # run async functions
+                await ret
 
 
 _PCRoxy_core = None
@@ -155,11 +158,11 @@ class PCRoxy:
         for chain in self.hook_chain.values():
             chain.make_chain()
 
-    def request(self, flow: http.HTTPFlow):
-        self.hook_chain['request'].run_flow(flow, self.mode)
+    async def request(self, flow: http.HTTPFlow):
+        await self.hook_chain['request'].run_flow(flow, self.mode)
 
-    def response(self, flow: http.HTTPFlow):
-        self.hook_chain['response'].run_flow(flow, self.mode)
+    async def response(self, flow: http.HTTPFlow):
+        await self.hook_chain['response'].run_flow(flow, self.mode)
 
     def register_hook_function(self, func_node: FuncNode, chain_name: str):
         if chain_name not in self.hook_chain.keys():
