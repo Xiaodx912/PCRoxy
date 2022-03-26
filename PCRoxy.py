@@ -1,10 +1,14 @@
 import asyncio
+import base64
+from collections import UserDict
 import importlib
+import inspect
 import json
 import os
 import re
 
-from typing import Callable, Dict, List, Set, Union
+from typing import Any, Callable, Dict, KeysView, List, Mapping, Set, TypeVar, Union, ValuesView
+from _collections_abc import dict_items, dict_keys, dict_values
 from mitmproxy import ctx, http
 from mitmproxy.tools.dump import DumpMaster
 from mitmproxy.tools.web.master import WebMaster
@@ -15,7 +19,7 @@ from tools.BCRCryptor import BCRCryptor
 
 class PCRoxyMode(Enum):
     OBSERVER = 1
-    # SERVER_MOCK = 2
+    MODIFIER = 2
 
     def isSafe(self) -> bool:
         return self in [PCRoxyMode.OBSERVER]
@@ -41,8 +45,7 @@ def PCRoxyLog(*args, **kwargs) -> Callable:
 
         cls.logger = PCRoxyLogger()
         return cls
-    # As decorator without args. type(class)==type(type(class instance))==type
-    if len(args) > 0 and type(args[0]) == type:
+    if args and inspect.isclass(args[0]):
         return PCRoxy_insert_logger(args[0])
     return PCRoxy_insert_logger
 
@@ -54,17 +57,13 @@ class FuncNode:
         self.mode_list = mode_list
         self.path = path
         self.priority = priority
+        self.is_async = inspect.iscoroutinefunction(func)
 
     def __lt__(self, other):
         return self.priority < other.priority
 
     def __str__(self) -> str:
-        return f"{self.plugin_name}::{self.func.__name__}"
-
-
-class PBDict(dict):  # TODO
-    def __init__(self, data: Dict):
-        pass
+        return f"{'async ' if self.is_async else ''}{self.plugin_name}::{self.func.__name__}"
 
 
 class HookCtx:
@@ -82,6 +81,12 @@ class HookCtx:
 
 @PCRoxyLog()
 class HookChain:
+    __content_types = (
+        "application/msgpack",
+        "application/x-msgpack",
+        "application/octet-stream",
+    )
+
     def __init__(self) -> None:
         self.chain: List[FuncNode] = []
         self.ready = False
@@ -100,25 +105,43 @@ class HookChain:
     async def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
         if not flow.request.host.endswith('gs-gzlj.bilibiligame.net'):
             return
+        event = 'request' if flow.response is None else 'response'
+        if flow.__getattribute__(event).headers.get('Content-Type', None) not in self.__content_types:
+            return
         flow.marked = ':crown:'
         if not self.ready:
             raise RuntimeError("Chain was not ready!!!")
-        event = 'request' if flow.response is None else 'response'
+        context = HookCtx()
+        raw = flow.__getattribute__(event).raw_content
+        if flow.request.query.get('format', '') == 'json':
+            context.payload = json.loads(raw)
+        else:
+            context.payload = self.cryptor.decrypt(raw)
         for node in self.chain:
             if mode not in node.mode_list:
                 continue
             if re.match(node.path, flow.request.path) == None:
                 continue
             self.logger(f'{node} handling {flow.request.path} {event}', 'info')
-            context = HookCtx()
-            raw = flow.__getattribute__(event).raw_content
-            if flow.request.query.get('format', '') == 'json':
-                context.payload = json.loads(raw)
+            if node.is_async:
+                await node.func(context=context)
             else:
-                context.payload = self.cryptor.decrypt(raw)
-            ret=node.func(context=context)
-            if asyncio.coroutines.iscoroutine(ret): # run async functions
-                await ret
+                node.func(context=context)
+        if flow.request.query.get('format', '') == 'json':
+            modified_raw = json.dumps(
+                context.payload, separators=(',', ':')).encode()
+        else:
+            modified_raw = self.cryptor.encrypt(
+                context.payload, self.cryptor.get_key(raw))
+            if event == 'response':
+                modified_raw = base64.b64encode(modified_raw)
+        origin_data = json.loads(raw) if flow.request.query.get(
+            'format', '') == 'json' else self.cryptor.decrypt(raw)
+        if mode == PCRoxyMode.MODIFIER and context.payload != origin_data:
+            print(f'Modify {flow.request.path} from\n'
+                  f'{origin_data}\nto\n{context.payload}')
+            flow.marked = ':wrench:'
+            flow.__getattribute__(event).set_content(modified_raw)
 
 
 _PCRoxy_core = None
@@ -130,7 +153,8 @@ class PCRoxy:
     def __init__(self, dumpmaster: Union[DumpMaster, WebMaster]):
         global _PCRoxy_core
         try:
-            self.config: Dict = json.load(open('./config.json', 'r', encoding='utf-8'))
+            self.config: Dict = json.load(
+                open('./config.json', 'r', encoding='utf-8'))
         except:
             self.logger('Config not found!', 'warn')
             self.config = {}
