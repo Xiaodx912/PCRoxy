@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 from mitmproxy import contentviews, flow, http
 
@@ -21,9 +22,13 @@ class ViewBCRMsgPack(contentviews.msgpack.ViewMsgPack):
         http_message: Optional[http.Message] = None,
         **unknown_metadata,
     ) -> contentviews.TViewResult:
-        decryptor = BCRCryptor()
-        decrypted = decryptor.decrypt(data)
-        return f"BCR msgpack(key={decryptor.get_key(data)})", contentviews.msgpack.format_msgpack(decrypted)
+        if flow.request.query.get('format', '') == 'json':
+            decrypted = json.loads(data)
+            return f"BCR msgpack(json_plain)", contentviews.msgpack.format_msgpack(decrypted)
+        else:
+            decryptor = BCRCryptor()
+            decrypted = decryptor.decrypt(data)
+            return f"BCR msgpack(key={decryptor.get_key(data)})", contentviews.msgpack.format_msgpack(decrypted)
 
     def render_priority(
         self,
