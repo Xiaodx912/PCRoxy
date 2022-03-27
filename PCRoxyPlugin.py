@@ -31,7 +31,7 @@ class PCRoxyPlugin:
             @wraps(func)
             def wrapped_function(*args, **kwargs):
                 return func(*args, **kwargs)
-            node = FuncNode(wrapped_function, self.name,
+            node = FuncNode(func, self.name,
                             self.mode, path, priority)
             self.core.register_hook_function(node, 'request')
             return wrapped_function
@@ -42,7 +42,7 @@ class PCRoxyPlugin:
             @wraps(func)
             def wrapped_function(*args, **kwargs):
                 return func(*args, **kwargs)
-            node = FuncNode(wrapped_function, self.name,
+            node = FuncNode(func, self.name,
                             self.mode, path, priority)
             self.core.register_hook_function(node, 'response')
             return wrapped_function
