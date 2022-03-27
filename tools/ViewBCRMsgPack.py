@@ -3,15 +3,11 @@ from typing import Optional
 from mitmproxy import contentviews, flow, http
 
 from tools.BCRCryptor import BCRCryptor
+from tools.FlowUtils import is_pcr_api
+
 
 class ViewBCRMsgPack(contentviews.msgpack.ViewMsgPack):
     name = "BCR msgpack"
-
-    __content_types = (
-        "application/msgpack",
-        "application/x-msgpack",
-        "application/octet-stream",
-    )
 
     def __call__(
         self,
@@ -39,8 +35,6 @@ class ViewBCRMsgPack(contentviews.msgpack.ViewMsgPack):
         http_message: Optional[http.Message] = None,
         **unknown_metadata,
     ) -> float:
-        if content_type not in self.__content_types:
-            return 0
-        if not flow.request.host.endswith('gzlj.bilibiligame.net'):
-            return 0
-        return 2
+        if is_pcr_api(flow):
+            return 2
+        return 0
