@@ -38,7 +38,7 @@ class PCRoxyPlugin:
         return req_hook_deco
 
     def on_response(self, path: str, priority: int = 0) -> Callable:
-        def req_hook_deco(func):
+        def resp_hook_deco(func):
             @wraps(func)
             def wrapped_function(*args, **kwargs):
                 return func(*args, **kwargs)
@@ -46,4 +46,15 @@ class PCRoxyPlugin:
                             self.mode, path, priority)
             self.core.register_hook_function(node, 'response')
             return wrapped_function
-        return req_hook_deco
+        return resp_hook_deco
+
+    def mock(self, path: str, priority: int = 0) -> Callable:
+        def server_mock_deco(func):
+            @wraps(func)
+            def wrapped_function(*args, **kwargs):
+                return func(*args, **kwargs)
+            node = FuncNode(func, self.name,
+                            self.mode, path, priority)
+            self.core.register_hook_function(node, 'mock')
+            return wrapped_function
+        return server_mock_deco

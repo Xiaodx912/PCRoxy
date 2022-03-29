@@ -1,20 +1,20 @@
+from abc import ABCMeta, abstractmethod
 import asyncio
 import base64
-from collections import UserDict
+from copy import deepcopy
 import importlib
 import inspect
 import json
 import os
 import re
 
-from typing import Any, Callable, Dict, KeysView, List, Mapping, Set, TypeVar, Union, ValuesView
-from _collections_abc import dict_items, dict_keys, dict_values
+from typing import Any, Callable, Dict, List, Set, Union
 from mitmproxy import ctx, http
 from mitmproxy.tools.dump import DumpMaster
 from mitmproxy.tools.web.master import WebMaster
 from enum import Enum
 
-from tools.BCRCryptor import BCRCryptor
+from tools.FlowUtils import adaptive_decode, adaptive_encode, get_active_part, is_pcr_api
 
 
 class PCRoxyMode(Enum):
@@ -67,8 +67,8 @@ class FuncNode:
 
 
 class HookCtx:
-    def __init__(self,) -> None:
-        pass
+    def __init__(self, data: Dict={}) -> None:
+        self.payload = data
 
     @property
     def payload(self) -> Dict:
@@ -79,13 +79,8 @@ class HookCtx:
         self._payload = new_dict
 
 
-@PCRoxyLog()
-class HookChain:
-    __content_types = (
-        "application/msgpack",
-        "application/x-msgpack",
-        "application/octet-stream",
-    )
+class FlowChain:
+    __metaclass__ = ABCMeta
 
     def __init__(self) -> None:
         self.chain: List[FuncNode] = []
@@ -99,49 +94,65 @@ class HookChain:
 
     def make_chain(self):
         self.chain.sort(reverse=True)
-        self.cryptor = BCRCryptor()
         self.ready = True
 
+    @abstractmethod
     async def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
-        if not flow.request.host.endswith('gs-gzlj.bilibiligame.net'):
+        raise RuntimeError()
+
+
+@PCRoxyLog
+class HookChain(FlowChain):
+    async def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
+        if not is_pcr_api(flow):
             return
-        event = 'request' if flow.response is None else 'response'
-        if flow.__getattribute__(event).headers.get('Content-Type', None) not in self.__content_types:
-            return
-        flow.marked = ':crown:'
+        if not flow.marked:
+            flow.marked = ':crown:'
         if not self.ready:
             raise RuntimeError("Chain was not ready!!!")
-        context = HookCtx()
-        raw = flow.__getattribute__(event).raw_content
-        if flow.request.query.get('format', '') == 'json':
-            context.payload = json.loads(raw)
-        else:
-            context.payload = self.cryptor.decrypt(raw)
+        origin_data = adaptive_decode(flow)
+        context = HookCtx(deepcopy(origin_data))
         for node in self.chain:
             if mode not in node.mode_list:
                 continue
             if re.match(node.path, flow.request.path) == None:
                 continue
-            self.logger(f'{node} handling {flow.request.path} {event}', 'info')
+            self.logger(f'{node} handling {flow.request.path} '
+                        f'{"request" if flow.response is None else "response"}', 'info')
             if node.is_async:
                 await node.func(context=context)
             else:
                 node.func(context=context)
-        if flow.request.query.get('format', '') == 'json':
-            modified_raw = json.dumps(
-                context.payload, separators=(',', ':')).encode()
-        else:
-            modified_raw = self.cryptor.encrypt(
-                context.payload, self.cryptor.get_key(raw))
-            if event == 'response':
-                modified_raw = base64.b64encode(modified_raw)
-        origin_data = json.loads(raw) if flow.request.query.get(
-            'format', '') == 'json' else self.cryptor.decrypt(raw)
         if mode == PCRoxyMode.MODIFIER and context.payload != origin_data:
-            print(f'Modify {flow.request.path} from\n'
-                  f'{origin_data}\nto\n{context.payload}')
+            modified_raw = adaptive_encode(context.payload, flow)
+            # print(f'Modify {flow.request.path} from\n'
+            #       f'{origin_data}\nto\n{context.payload}')
             flow.marked = ':wrench:'
-            flow.__getattribute__(event).set_content(modified_raw)
+            get_active_part(flow).set_content(modified_raw)\
+
+
+
+@PCRoxyLog
+class MockChain(FlowChain):
+    async def run_flow(self, flow: http.HTTPFlow, mode: PCRoxyMode):
+        if mode.isSafe() or not is_pcr_api(flow):
+            return False
+        if not self.ready:
+            raise RuntimeError("Chain was not ready!!!")
+        for node in self.chain:
+            if re.match(node.path, flow.request.path) == None:
+                continue
+            self.logger(f'{node} mockup on {flow.request.path}', 'info')
+            context = HookCtx(adaptive_decode(flow))
+            mock_resp: http.Response
+            if node.is_async:
+                mock_resp = await node.func(context=context)
+            else:
+                mock_resp = node.func(context=context)
+            flow.response = mock_resp
+            flow.marked = ':ghost:'
+            return True
+        return False
 
 
 _PCRoxy_core = None
@@ -168,9 +179,10 @@ class PCRoxy:
         self.logger(f'Starting in {self.mode.name} mode')
         if not self.mode.isSafe():
             self.logger(f'Dangerous mode!', 'warn')
-        self.hook_chain: Dict[str, HookChain] = {}
+        self.hook_chain: Dict[str, Union[HookChain, MockChain]] = {}
         self.hook_chain['request'] = HookChain()
         self.hook_chain['response'] = HookChain()
+        self.hook_chain['mock'] = MockChain()
         _PCRoxy_core = self
 
     def load(self, loader):
@@ -183,18 +195,21 @@ class PCRoxy:
             chain.make_chain()
 
     async def request(self, flow: http.HTTPFlow):
+        if await self.hook_chain['mock'].run_flow(flow, self.mode):
+            return
         await self.hook_chain['request'].run_flow(flow, self.mode)
 
     async def response(self, flow: http.HTTPFlow):
         await self.hook_chain['response'].run_flow(flow, self.mode)
 
     def register_hook_function(self, func_node: FuncNode, chain_name: str):
-        if chain_name not in self.hook_chain.keys():
+        if chain_name in self.hook_chain.keys():
+            self.hook_chain[chain_name].add_node(func_node)
+            self.logger(
+                f'Func {func_node} loaded by chain {chain_name}', 'info')
+        else:
             self.logger(f'Hook chain {chain_name} not found!', 'error')
             return
-        self.hook_chain[chain_name].add_node(func_node)
-        self.logger(
-            f'Func {func_node} loaded by chain {chain_name}', 'info')
 
     def scan_plugins(self, plugins_path: str = './plugins', module_prefix: str = 'plugins') -> List[str]:
         plugin_list = set()
