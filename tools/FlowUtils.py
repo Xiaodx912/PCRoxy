@@ -11,7 +11,7 @@ def get_active_part(flow: HTTPFlow) -> Union[Request, Response]:
 
 
 def is_pcr_api(flow: HTTPFlow) -> bool:
-    if not flow.request.host.endswith('gs-gzlj.bilibiligame.net'):
+    if not flow.request.pretty_host.endswith('gs-gzlj.bilibiligame.net'):
         return False
     if get_active_part(flow).headers.get('Content-Type', None) not in (
         "application/msgpack",
