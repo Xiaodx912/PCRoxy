@@ -8,10 +8,6 @@ from tools.BCRCryptor import BCRCryptor
 
 plugin = PCRoxyPlugin(mode_list=[PCRoxyMode.MODIFIER])
 
-@plugin.on_response(path='/clan_battle/top')
-def print_cbtop(context: HookCtx):
-    print(context.payload)
-
 @plugin.mock(path='/clan_battle/top')
 def mock_cbtop(context: HookCtx):
     h = {

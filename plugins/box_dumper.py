@@ -94,7 +94,6 @@ def enc_library_dict(data):
 
 @plugin.on_response(path='/load/index')
 async def DumpPlayerBox(context: HookCtx):
-    print('========================Called===========================')
     box_data = {}
     box_data['unit_list'] = context.payload['data']['unit_list']
     box_data['user_chara_info'] = context.payload['data']['user_chara_info']
