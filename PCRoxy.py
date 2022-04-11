@@ -1,10 +1,12 @@
 from abc import ABCMeta, abstractmethod
 import asyncio
 import base64
+from colorama import Fore, Back
 from copy import deepcopy
 import importlib
 import inspect
 import json
+import logging
 import os
 import re
 
@@ -28,20 +30,30 @@ class PCRoxyMode(Enum):
 def PCRoxyLog(*args, **kwargs) -> Callable:
     def PCRoxy_insert_logger(cls):
         class PCRoxyLogger:
+            __color_table = {
+                'debug': f'{Fore.BLUE}{"{}"}{Fore.RESET}',
+                'info': f'{Fore.WHITE}{"{}"}{Fore.RESET}',
+                'warn': f'{Fore.YELLOW}{"{}"}{Fore.RESET}',
+                'error': f'{Fore.RED}{"{}"}{Fore.RESET}',
+                'critical': f'{Fore.RED+Back.WHITE}{"{}"}{Fore.RESET+Back.RESET}',
+            }
+
             def __init__(self):
                 self.ctx = ctx
                 self.cls_name = cls.__name__
+                self.logger = logging.getLogger(cls.__name__)
+                self.logger.setLevel(logging.DEBUG)
 
             def __call__(self, msg: str, level: str = 'info') -> None:
+                level = level.lower()
                 try:
-                    log_func = self.ctx.log.__getattribute__(level)
-                except AttributeError:
-                    self.ctx.log.error(
-                        f"[PCRoxyLogger] No such log level(log level: {level} )")
-                log_func(self.format(msg))
-
-            def format(self, msg: str) -> str:
-                return f"[{self.cls_name}] {msg}"
+                    log_func = self.logger.__getattribute__(level)
+                    log_color = self.__color_table.__getitem__(level)
+                except (AttributeError, KeyError):
+                    logging.getLogger('PCRoxyLogger').error(self.__color_table['error'].format(
+                        f"No such log level(log level: {level}) for log: {msg}"))
+                    return
+                log_func(log_color.format(msg), stacklevel=2)
 
         cls.logger = PCRoxyLogger()
         return cls
@@ -67,7 +79,7 @@ class FuncNode:
 
 
 class HookCtx:
-    def __init__(self, data: Dict={}) -> None:
+    def __init__(self, data: Dict = {}) -> None:
         self.payload = data
 
     @property
