@@ -2,7 +2,8 @@ from functools import wraps
 import os
 import sys
 from typing import Callable, Dict, List
-from PCRoxy import _PCRoxy_core, FuncNode, PCRoxy, PCRoxyLog, PCRoxyMode
+from PCRoxy import _PCRoxy_core, FuncNode, PCRoxy, PCRoxyMode
+from tools.PCRoxyLog import PCRoxyLog
 
 
 def get_core() -> PCRoxy:

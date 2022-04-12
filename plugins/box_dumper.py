@@ -2,7 +2,8 @@ import base64
 import gzip
 import json
 import aiohttp
-from PCRoxy import PCRoxyMode, HookCtx
+from PCRoxy import PCRoxyMode
+from PCRoxyFlowChain import HookCtx
 from PCRoxyPlugin import PCRoxyPlugin
 
 plugin = PCRoxyPlugin(name='BoxDumper', mode_list=[PCRoxyMode.OBSERVER])

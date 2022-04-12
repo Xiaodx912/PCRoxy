@@ -2,7 +2,8 @@ import base64
 from time import gmtime, strftime, time
 from mitmproxy.http import Response
 
-from PCRoxy import PCRoxyMode, HookCtx
+from PCRoxy import PCRoxyMode
+from PCRoxyFlowChain import HookCtx
 from PCRoxyPlugin import PCRoxyPlugin
 from tools.BCRCryptor import BCRCryptor
 

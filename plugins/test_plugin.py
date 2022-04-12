@@ -1,4 +1,5 @@
-from PCRoxy import PCRoxyMode, HookCtx
+from PCRoxy import PCRoxyMode
+from PCRoxyFlowChain import HookCtx
 from PCRoxyPlugin import PCRoxyPlugin
 
 plugin = PCRoxyPlugin(mode_list=[PCRoxyMode.OBSERVER])
