@@ -11,3 +11,7 @@
 - file  
     本模式会将信息以json文件的形式输出到PCRoxy根目录。当插件在加载过程中获取到数据后，会提取玩家的角色、库存及个人资料并保存到名为box_{玩家UID}.json的文件。  
     想要使用本模式，您只需在config.json中配置mode为file即可。  
+
+## ArenaQuery  
+竞技场解法查询工具，数据源为[pcrdfans.com](https://pcrdfans.com/battle)，使用前需要在config.json填入[pcrd_key](https://pcrdfans.com/bot)。  
+插件会在搜索新对手时记录对方防守阵容，并在进入选人界面时进行查询。本插件为对插件存储的测试，结果展示为纯文本信息，且使用来自HoshinoBot的_pcr_data.py文件做`角色id->名称`转换。  

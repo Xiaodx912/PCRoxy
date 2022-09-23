@@ -13,8 +13,6 @@ from PCRoxyFlowChain import FuncNode, HookChain, MockChain
 from PCRoxyMode import PCRoxyMode
 from tools.PCRoxyLog import PCRoxyLog
 
-_PCRoxy_core = None
-
 
 @PCRoxyLog
 class PCRoxy:
@@ -37,10 +35,11 @@ class PCRoxy:
         self.logger(f'Starting in {self.mode.name} mode')
         if not self.mode.isSafe():
             self.logger(f'Dangerous mode!', 'warn')
+        self.ctx_storage: Dict[str, Dict] = {}
         self.hook_chain: Dict[str, Union[HookChain, MockChain]] = {}
-        self.hook_chain['request'] = HookChain()
-        self.hook_chain['response'] = HookChain()
-        self.hook_chain['mock'] = MockChain()
+        self.hook_chain['request'] = HookChain(self)
+        self.hook_chain['response'] = HookChain(self)
+        self.hook_chain['mock'] = MockChain(self)
         _PCRoxy_core = self
 
     def load(self, loader):
@@ -88,3 +87,6 @@ class PCRoxy:
 
     def load_plugin(self, module_path: str):
         importlib.import_module(module_path)
+
+
+_PCRoxy_core: Union[None, PCRoxy] = None

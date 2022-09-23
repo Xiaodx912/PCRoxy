@@ -2,7 +2,7 @@ import inspect
 import re
 from abc import ABCMeta, abstractmethod
 from copy import deepcopy
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Union
 
 from mitmproxy import http
 
@@ -28,8 +28,15 @@ class FuncNode:
 
 
 class HookCtx:
-    def __init__(self, data: Dict = {}) -> None:
+    def __init__(self, core, data: Dict = {}) -> None:
         self.payload = data
+        self._ctx_name: Union[None, str] = None
+        self._ctx: Union[None, Dict] = None
+        self.core = core
+
+    # @property
+    # def core(self) -> PCRoxy:
+    #     return _PCRoxy_core
 
     @property
     def payload(self) -> Dict:
@@ -39,13 +46,42 @@ class HookCtx:
     def payload(self, new_dict):
         self._payload = new_dict
 
+    @property
+    def ctx(self) -> Dict:
+        if self._ctx is None:
+            raise RuntimeError("Access context before load")
+        return self._ctx
+
+    @ctx.setter
+    def ctx(self, new_dict):
+        if self._ctx is None:
+            raise RuntimeError("Access context before load")
+        self._ctx = new_dict
+
+    def load_ctx(self, fnode: FuncNode):
+        if self._ctx_name is not None:
+            self.store_ctx()
+        self._ctx_name = fnode.plugin_name
+        self._ctx = self.core.ctx_storage[self._ctx_name]
+
+    def store_ctx(self):
+        if self._ctx_name is None or self._ctx is None:
+            return
+        self.core.ctx_storage[self._ctx_name] = self._ctx
+        self._ctx = None
+        self._ctx_name = None
+
+    def __del__(self):
+        self.store_ctx()
+
 
 class FlowChain:
     __metaclass__ = ABCMeta
 
-    def __init__(self) -> None:
+    def __init__(self, core) -> None:
         self.chain: List[FuncNode] = []
         self.ready = False
+        self.core = core
 
     def add_node(self, func_node: FuncNode):
         if self.ready is True:
@@ -72,7 +108,7 @@ class HookChain(FlowChain):
         if not self.ready:
             raise RuntimeError("Chain was not ready!!!")
         origin_data = adaptive_decode(flow)
-        context = HookCtx(deepcopy(origin_data))
+        context = HookCtx(self.core, deepcopy(origin_data))
         for node in self.chain:
             if mode not in node.mode_list:
                 continue
@@ -80,6 +116,7 @@ class HookChain(FlowChain):
                 continue
             self.logger(f'{node} handling {flow.request.path} '
                         f'{"request" if flow.response is None else "response"}', 'info')
+            context.load_ctx(node)
             if node.is_async:
                 await node.func(context=context)
             else:
@@ -101,7 +138,8 @@ class MockChain(FlowChain):
             if re.match(node.path, flow.request.path) == None:
                 continue
             self.logger(f'{node} mockup on {flow.request.path}', 'info')
-            context = HookCtx(adaptive_decode(flow))
+            context = HookCtx(self.core, adaptive_decode(flow))
+            context.load_ctx(node)
             mock_resp: http.Response
             if node.is_async:
                 mock_resp = await node.func(context=context)

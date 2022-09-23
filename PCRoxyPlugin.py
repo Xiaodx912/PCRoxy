@@ -22,6 +22,7 @@ class PCRoxyPlugin:
             '.py', '')
         self.config = self.core.config.get(self.name, {})
         self.mode = mode_list
+        self.core.ctx_storage[self.name] = {}
 
     @property
     def core(self) -> PCRoxy:
